@@ -1,0 +1,27 @@
+{
+  "version": 4,
+  "key": "xiangjiao",
+  "name": "香蕉",
+  "groups": {
+    "interior": {
+      "name": "家装设计",
+      "icon": "🏠",
+      "file": "groups/interior.json"
+    },
+    "architecture": {
+      "name": "工装设计",
+      "icon": "🏛",
+      "file": "groups/architecture.json"
+    },
+    "landscape": {
+      "name": "景观设计",
+      "icon": "🌳",
+      "file": "groups/landscape.json"
+    },
+    "group_6y2csa": {
+      "name": "建筑设计",
+      "icon": "📁",
+      "file": "groups/group_6y2csa.json"
+    }
+  }
+}

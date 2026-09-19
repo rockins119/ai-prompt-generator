@@ -1,0 +1,16 @@
+{
+  "name": "prompt-generator-tests",
+  "version": "1.0.0",
+  "private": true,
+  "description": "AI 提示词生成器的本地自测脚本（部署时不需要这些文件）",
+  "type": "commonjs",
+  "scripts": {
+    "test": "node test.js",
+    "layout": "node layout.js",
+    "compare": "node compare.js"
+  },
+  "devDependencies": {
+    "jsdom": "^30.1.0",
+    "puppeteer-core": "^25.11.0"
+  }
+}

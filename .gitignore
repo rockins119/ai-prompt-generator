@@ -1,0 +1,13 @@
+# 依赖
+node_modules/
+package-lock.json
+
+# 测试产物
+_test/*.png
+_test/json-*.json
+
+# 本地抓取的原始数据（分析用，可随时删除）
+_site_dump/
+
+# 临时脚本
+_*.py

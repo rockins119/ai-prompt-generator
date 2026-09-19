@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>AI 提示词生成器</title>
+  <meta name="description" content="可视化选择参数，一键生成结构化 JSON 提示词">
+  <link rel="icon" type="image/svg+xml" href="favicon.svg">
+  <link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+
+  <header>
+    <div class="header-center">
+      <h1 class="header-title" id="appTitle">AI 提示词生成器</h1>
+      <p class="header-sub" id="appSubtitle">选择参数 · 一键生成结构化提示词 · 复制到任意 AI 出图工具</p>
+    </div>
+  </header>
+
+  <main>
+    <section id="left-panel">
+      <div class="nav-block">
+        <div class="group-nav-bar" id="groupNavBar"></div>
+        <div class="preset-bar" id="presetNavBar"></div>
+      </div>
+      <div id="form-container">
+        <div class="placeholder">正在加载配置...</div>
+      </div>
+    </section>
+
+    <aside id="right-panel">
+      <div class="preview-header">
+        <span class="preview-title">JSON 提示词</span>
+        <span class="preview-meta" id="previewMeta"></span>
+        <button type="button" class="copy-btn panel-copy" data-action="copy">复制</button>
+        <button type="button" class="panel-toggle" id="panelToggle" aria-expanded="true">收起</button>
+      </div>
+
+      <div id="preview-content">
+        <pre id="json-preview">{}</pre>
+      </div>
+
+      <div class="preview-actions">
+        <button type="button" class="copy-btn primary" data-action="copy">复制 JSON</button>
+        <button type="button" class="copy-btn" data-action="copy-open" id="btnCopyOpen">复制并打开 AI</button>
+        <button type="button" class="copy-btn" data-action="download">下载 JSON</button>
+        <button type="button" class="copy-btn ghost" data-action="reset">重置当前预设</button>
+      </div>
+    </aside>
+  </main>
+
+  <div id="toast" class="toast"></div>
+
+  <script src="assets/app.js"></script>
+</body>
+</html>

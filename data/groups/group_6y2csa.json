@@ -1,0 +1,17 @@
+{
+ "name": "建筑设计",
+ "icon": "📁",
+ "sections": {},
+ "presets": [
+  {
+   "key": "default",
+   "name": "默认配置",
+   "sections": {}
+  },
+  {
+   "key": "___",
+   "name": "新预设",
+   "sections": {}
+  }
+ ]
+}
