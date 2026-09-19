@@ -73,7 +73,9 @@ function check(name, cond, extra) {
 
     return {
       navH: Math.round(nav.height),
-      presetSelectW: Math.round(document.getElementById('presetSelect').getBoundingClientRect().width),
+      presetBarH: Math.round(document.getElementById('presetNavBar').getBoundingClientRect().height),
+      presetPillCount: document.querySelectorAll('#presetNavBar .preset-pill').length,
+      selectCount: document.querySelectorAll('#form-container select').length,
       rowCount: rows.length,
       labelWidths: { min: Math.min(...labelWidths), max: Math.max(...labelWidths) },
       labelHeights: { min: Math.min(...normalHeights), max: Math.max(...normalHeights) },
@@ -81,6 +83,11 @@ function check(name, cond, extra) {
       normalLabelCount: normalHeights.length,
       controlLeft: { min: Math.min(...controlLefts), max: Math.max(...controlLefts) },
       rowHeights: { min: Math.min(...heights), avg: Math.round(heights.reduce((a, b) => a + b, 0) / heights.length), max: Math.max(...heights) },
+      smallRowHeights: (() => {
+        const hs = rows.filter(r => r.querySelectorAll('.pill-label').length <= 8)
+          .map(r => Math.round(r.getBoundingClientRect().height));
+        return { min: Math.min(...hs), max: Math.max(...hs), n: hs.length };
+      })(),
       leftTotalH: left.scrollHeight,
       leftViewH: left.clientHeight,
       screens: +(left.scrollHeight / left.clientHeight).toFixed(1),
@@ -92,7 +99,7 @@ function check(name, cond, extra) {
     };
   });
 
-  console.log('    导航区高度        : ' + m.navH + 'px（预设下拉宽 ' + m.presetSelectW + 'px）');
+  console.log('    导航区高度        : ' + m.navH + 'px（其中预设栏 ' + m.presetBarH + 'px，' + m.presetPillCount + ' 个胶囊）');
   console.log('    字段行数          : ' + m.rowCount);
   console.log('    标签列宽          : ' + m.labelWidths.min + ' ~ ' + m.labelWidths.max + 'px');
   console.log('    标签列高          : ' + m.labelHeights.min + ' ~ ' + m.labelHeights.max + 'px（普通行最大 ' + m.normalLabelMax + 'px）');
@@ -105,12 +112,15 @@ function check(name, cond, extra) {
   check('标签列宽一致（控件起点对齐）', m.controlLeft.max - m.controlLeft.min <= 2,
     { min: m.controlLeft.min, max: m.controlLeft.max });
   check('普通字段的标签不折行', m.normalLabelMax <= 26, { max: m.normalLabelMax, 检查了: m.normalLabelCount + ' 个' });
-  check('导航区显著变矮（< 110px）', m.navH < 110, m.navH);
-  check('一屏能看到 15 个以上字段', m.perScreen >= 15, m.perScreen);
-  check('内容总高降到 2000px 以内', m.leftTotalH < 2000, m.leftTotalH);
-  check('滚动距离不超过 2.2 屏', m.screens <= 2.2, m.screens);
-  check('行高比旧版整齐（max/min < 3.5）', m.rowHeights.max / m.rowHeights.min < 3.5,
-    { min: m.rowHeights.min, max: m.rowHeights.max });
+  check('导航区没有失控（< 320px）', m.navH < 320, m.navH);
+  check('一屏能看到 10 个以上字段', m.perScreen >= 10, m.perScreen);
+  check('内容总高控制在 2600px 以内', m.leftTotalH < 2600, m.leftTotalH);
+  check('滚动距离不超过 3 屏', m.screens <= 3, m.screens);
+  check('字段全部用胶囊点选（页面无下拉框）', m.selectCount === 0, m.selectCount);
+  check('预设是胶囊（28 个）', m.presetPillCount === 28, m.presetPillCount);
+  check('选项少的字段最多占两行胶囊（≤ 80px）',
+    m.smallRowHeights.max <= 80,
+    m.smallRowHeights);
 
   console.log('\n=== 提示气泡（说明文字）===');
   const tipBefore = await page.evaluate(() => ({
@@ -142,15 +152,19 @@ function check(name, cond, extra) {
   console.log('    行高离散  标准差 128px → 极差 ' + (m.rowHeights.max - m.rowHeights.min) + 'px');
 
   console.log('\n=== 交互后状态 ===');
-  await page.select('#presetSelect', await page.evaluate(() => document.getElementById('presetSelect').options[2].value));
-  await new Promise(r => setTimeout(r, 600));
+  const beforePresetH = await page.evaluate(() => document.querySelector('#left-panel').scrollHeight);
+  await page.evaluate(() => document.querySelectorAll('#presetNavBar .preset-pill')[2]
+    .dispatchEvent(new MouseEvent('click', { bubbles: true })));
+  await new Promise(r => setTimeout(r, 700));
   const after = await page.evaluate(() => ({
     rows: document.querySelectorAll('#form-container .field').length,
     leftTotalH: document.querySelector('#left-panel').scrollHeight,
     scrollTop: document.querySelector('#left-panel').scrollTop,
+    activeIdx: Array.from(document.querySelectorAll('#presetNavBar .preset-pill')).findIndex(p => p.classList.contains('active')),
     url: location.search
   }));
   check('切换预设后重新渲染', after.rows > 0, after);
+  check('点击第 3 个预设后它高亮', after.activeIdx === 2, after.activeIdx);
   check('切换预设后回到顶部', after.scrollTop === 0, after.scrollTop);
 
   await page.click('#groupNavBar .group-tab:nth-child(3)');
@@ -158,7 +172,7 @@ function check(name, cond, extra) {
   const g = await page.evaluate(() => ({
     active: document.querySelector('#groupNavBar .group-tab.active').textContent.trim(),
     rows: document.querySelectorAll('#form-container .field').length,
-    presets: document.getElementById('presetSelect').options.length
+    presets: document.querySelectorAll('#presetNavBar .preset-pill').length
   }));
   check('切到景观设计', /景观/.test(g.active), g);
   check('景观设计有内容', g.rows > 0 && g.presets > 0, g);

@@ -24,9 +24,7 @@ const CONFIG = {
   rememberLastChoice: true
 };
 
-/* 排版相关：选项超过 CAPSULE_LIMIT 个的字段自动改用下拉框，省一大片地方 */
-const CAPSULE_LIMIT = 8;
-/* 字段名超过这么多字（个别开关拿整段话当名字）就独占一行显示 */
+/* 排版相关：字段名超过这么多字（个别开关拿整段话当名字）就独占一行显示 */
 const LONG_LABEL = 22;
 
 /* ===================== 运行时状态 ===================== */
@@ -184,16 +182,9 @@ function renderField(entry) {
     controlBox.appendChild(switchControl(entry));
   } else if (type === 'text') {
     controlBox.appendChild(textControl(entry));
-  } else if (type === 'multi-select') {
-    controlBox.appendChild(pillGroup(entry, true));
   } else {
-    // select 与 button-select 统一处理：选项少用胶囊，选项多改成下拉框
-    const count = flatOptions(field).length;
-    if (type === 'select' || count > CAPSULE_LIMIT) {
-      controlBox.appendChild(selectControl(entry));
-    } else {
-      controlBox.appendChild(pillGroup(entry, false));
-    }
+    // button-select / select 都用胶囊点选；multi-select 用可多选的胶囊
+    controlBox.appendChild(pillGroup(entry, type === 'multi-select'));
   }
 
   if (!isSwitch) controlBox.appendChild(adderControl(entry));
@@ -220,52 +211,6 @@ function textControl(entry) {
   input.value = value === undefined || value === null ? '' : String(value);
   input.addEventListener('input', () => setValue(entry.id, input.value));
   return input;
-}
-
-function selectControl(entry) {
-  const { id, field } = entry;
-  const select = el('select');
-  const current = STATE.values[id];
-
-  const pushOption = (parent, opt) => {
-    const option = el('option', null, opt.label);
-    option.value = opt.value;
-    if (opt.value === current) option.selected = true;
-    parent.appendChild(option);
-  };
-
-  const raw = field.options;
-  if (raw && !Array.isArray(raw) && typeof raw === 'object' && field.group) {
-    for (const groupName of Object.keys(raw)) {
-      const og = el('optgroup');
-      og.label = groupName;
-      (raw[groupName] || []).forEach(item => {
-        const n = normalizeOption(item);
-        if (n) pushOption(og, n);
-      });
-      select.appendChild(og);
-    }
-  } else {
-    flatOptions(field).forEach(opt => pushOption(select, opt));
-  }
-
-  const ADD = el('option', null, '✎ 自定义…');
-  ADD.value = '__ADD_NEW__';
-  select.appendChild(ADD);
-  select.value = current;
-
-  select.addEventListener('change', () => {
-    if (select.value === '__ADD_NEW__') {
-      openAdder(id);
-      select.value = STATE.values[id];
-    } else {
-      closeAdder(id);
-      setValue(id, select.value);
-    }
-  });
-
-  entry.selectEl = select;
-  return select;
 }
 
 function pillGroup(entry, multi) {
@@ -362,13 +307,7 @@ function commitCustom(entry, ta) {
 
   STATE.pendingCustom[id] = { value, label: value };
 
-  if (entry.selectEl) {
-    const option = el('option', null, value);
-    option.value = value;
-    entry.selectEl.insertBefore(option, entry.selectEl.lastElementChild);
-    entry.selectEl.value = value;
-    setValue(id, value);
-  } else if (entry.pillGroupEl) {
+  if (entry.pillGroupEl) {
     const multi = field.type === 'multi-select';
     const node = pillElement(entry, { value, label: value }, multi);
     const box = node.querySelector('input');
@@ -507,27 +446,26 @@ function renderGroupNav() {
   });
 }
 
-function renderPresetSelect() {
-  const select = document.getElementById('presetSelect');
-  if (!select) return;
-  select.innerHTML = '';
+function renderPresetBar() {
+  const bar = document.getElementById('presetNavBar');
+  if (!bar) return;
+  bar.innerHTML = '';
 
   const presets = (STATE.group && STATE.group.presets) || [];
   if (!presets.length) {
-    const opt = el('option', null, '该分组暂无预设，使用默认配置');
-    opt.value = '';
-    select.appendChild(opt);
-    select.disabled = true;
+    bar.appendChild(el('span', 'nav-empty', '该分组暂无预设，使用上方默认配置'));
     return;
   }
 
-  select.disabled = false;
   presets.forEach((preset, i) => {
-    const opt = el('option', null, (i + 1) + '. ' + (preset.name || preset.key));
-    opt.value = preset.key;
-    select.appendChild(opt);
+    const btn = el('button', 'preset-pill');
+    btn.type = 'button';
+    btn.textContent = (i + 1) + '. ' + (preset.name || preset.key);
+    btn.title = preset.name || preset.key;
+    if (preset.key === STATE.presetKey) btn.classList.add('active');
+    btn.addEventListener('click', () => selectPreset(preset.key));
+    bar.appendChild(btn);
   });
-  select.value = STATE.presetKey;
 }
 
 function activePreset() {
@@ -636,7 +574,7 @@ async function selectGroup(groupKey) {
     STATE.presetKey = keep ? STATE.presetKey : (presets.length ? presets[0].key : '');
 
     renderGroupNav();
-    renderPresetSelect();
+    renderPresetBar();
     buildForm(activeSections());
     saveChoice();
 
@@ -654,7 +592,7 @@ function selectPreset(presetKey) {
   if (!preset) return;
 
   STATE.presetKey = presetKey;
-  renderPresetSelect();
+  renderPresetBar();
   buildForm(activeSections());
   saveChoice();
 
@@ -714,11 +652,6 @@ function bindActions() {
       else if (action === 'reset') resetPreset();
     });
   });
-
-  const presetSelect = document.getElementById('presetSelect');
-  if (presetSelect) {
-    presetSelect.addEventListener('change', () => selectPreset(presetSelect.value));
-  }
 }
 
 /** 窄屏下把 JSON 面板收成底部一条，点「展开」查看完整内容 */
