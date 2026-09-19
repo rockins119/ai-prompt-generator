@@ -12,21 +12,30 @@ async function grab(browser, url, label, setup) {
   const errors = [];
   page.on('pageerror', e => errors.push(e.message));
   await page.goto(url, { waitUntil: 'networkidle2', timeout: 90000 });
-  await page.waitForSelector('#form-container .card', { timeout: 60000 });
+  await page.waitForSelector('#form-container .card, #form-container .field', { timeout: 60000 });
   await new Promise(r => setTimeout(r, 1200));
 
-  const snapshot = await page.evaluate(() => ({
-    groups: Array.from(document.querySelectorAll('#groupNavBar .group-tab')).map(b => b.textContent.trim()),
-    presets: Array.from(document.querySelectorAll('#presetNavBar .preset-pill')).map(b => b.textContent.trim()),
-    cards: document.querySelectorAll('#form-container .card').length,
-    json: document.getElementById('json-preview').textContent,
-    activeGroup: document.querySelector('#groupNavBar .group-tab.active') ?
-      document.querySelector('#groupNavBar .group-tab.active').textContent.trim() : null,
-    activePreset: document.querySelector('#presetNavBar .preset-pill.active') ?
-      document.querySelector('#presetNavBar .preset-pill.active').textContent.trim() : null,
-    groupCount: document.querySelectorAll('#groupNavBar .group-tab').length,
-    presetCount: document.querySelectorAll('#presetNavBar .preset-pill').length
-  }));
+  const snapshot = await page.evaluate(() => {
+    const sel = document.getElementById('presetSelect');
+    const presetList = sel
+      ? Array.from(sel.options).map(o => o.textContent.trim())
+      : Array.from(document.querySelectorAll('#presetNavBar .preset-pill')).map(b => b.textContent.trim());
+    const activePreset = sel
+      ? (sel.options[sel.selectedIndex] ? sel.options[sel.selectedIndex].textContent.trim() : null)
+      : (document.querySelector('#presetNavBar .preset-pill.active')
+        ? document.querySelector('#presetNavBar .preset-pill.active').textContent.trim() : null);
+    const activeGroupEl = document.querySelector('#groupNavBar .group-tab.active');
+    return {
+      groups: Array.from(document.querySelectorAll('#groupNavBar .group-tab')).map(b => b.textContent.trim()),
+      presets: presetList,
+      cards: document.querySelectorAll('#form-container .card, #form-container .field').length,
+      json: document.getElementById('json-preview').textContent,
+      activeGroup: activeGroupEl ? activeGroupEl.textContent.trim() : null,
+      activePreset: activePreset,
+      groupCount: document.querySelectorAll('#groupNavBar .group-tab').length,
+      presetCount: presetList.length
+    };
+  });
   console.log('  [' + label + '] groups=' + snapshot.groupCount + ' presets=' + snapshot.presetCount +
     ' cards=' + snapshot.cards + ' jsonLen=' + snapshot.json.length +
     ' activeGroup=' + snapshot.activeGroup + ' activePreset=' + snapshot.activePreset);
@@ -54,14 +63,17 @@ async function grab(browser, url, label, setup) {
   };
 
   console.log('\n=== 结构对比 ===');
+  const strip = s => String(s).replace(/^\d+\.\s*/, '');
   check('分组标题数量一致', a.groups.length === b.groups.length, { 原站: a.groups.length, 本地: b.groups.length });
   check('分组标题内容一致', JSON.stringify(a.groups) === JSON.stringify(b.groups),
     { 原站: a.groups, 本地: b.groups });
   check('预设数量一致', a.presets.length === b.presets.length, { 原站: a.presets.length, 本地: b.presets.length });
-  check('预设列表一致', JSON.stringify(a.presets) === JSON.stringify(b.presets));
+  check('预设列表一致（忽略序号前缀）',
+    JSON.stringify(a.presets.map(strip)) === JSON.stringify(b.presets.map(strip)),
+    { 原站前三: a.presets.slice(0, 3), 本地前三: b.presets.slice(0, 3) });
   check('默认分组一致', a.activeGroup === b.activeGroup, { 原站: a.activeGroup, 本地: b.activeGroup });
-  check('默认预设一致', a.activePreset === b.activePreset, { 原站: a.activePreset, 本地: b.activePreset });
-  check('字段卡片数一致', a.cards === b.cards, { 原站: a.cards, 本地: b.cards });
+  check('默认预设一致', strip(a.activePreset) === strip(b.activePreset), { 原站: a.activePreset, 本地: b.activePreset });
+  check('字段数量一致', a.cards === b.cards, { 原站: a.cards, 本地: b.cards });
 
   console.log('\n=== 默认 JSON 输出对比 ===');
   check('默认 JSON 完全一致', a.json === b.json,
@@ -87,23 +99,38 @@ async function grab(browser, url, label, setup) {
   async function compareAcross(pageUrl, label) {
     const page = await browser.newPage();
     await page.goto(pageUrl, { waitUntil: 'networkidle2', timeout: 90000 });
-    await page.waitForSelector('#form-container .card', { timeout: 60000 });
+    await page.waitForSelector('#form-container .card, #form-container .field', { timeout: 60000 });
     await new Promise(r => setTimeout(r, 1000));
 
     const result = await page.evaluate(async () => {
+      const sleep = ms => new Promise(r => setTimeout(r, ms));
       const out = {};
       const groups = Array.from(document.querySelectorAll('#groupNavBar .group-tab'));
       for (let gi = 0; gi < groups.length; gi++) {
         groups[gi].click();
-        await new Promise(r => setTimeout(r, 900));
+        await sleep(900);
         const gName = document.querySelector('#groupNavBar .group-tab.active').textContent.trim();
         out[gName] = {};
-        const pills = Array.from(document.querySelectorAll('#presetNavBar .preset-pill'));
-        for (let pi = 0; pi < pills.length; pi++) {
-          document.querySelectorAll('#presetNavBar .preset-pill')[pi].click();
-          await new Promise(r => setTimeout(r, 250));
-          const pName = document.querySelector('#presetNavBar .preset-pill.active').textContent.trim();
-          out[gName][pName] = document.getElementById('json-preview').textContent;
+
+        const sel = document.getElementById('presetSelect');
+        if (sel) {
+          // 本地版：预设是下拉框
+          const keys = Array.from(sel.options).map(o => o.value);
+          for (let pi = 0; pi < keys.length; pi++) {
+            sel.value = keys[pi];
+            sel.dispatchEvent(new Event('change', { bubbles: true }));
+            await sleep(320);
+            out[gName]['preset#' + pi] = document.getElementById('json-preview').textContent;
+          }
+        } else {
+          // 原站：预设是一排胶囊按钮
+          const pills = () => Array.from(document.querySelectorAll('#presetNavBar .preset-pill'));
+          const n = pills().length;
+          for (let pi = 0; pi < n; pi++) {
+            pills()[pi].click();
+            await sleep(300);
+            out[gName]['preset#' + pi] = document.getElementById('json-preview').textContent;
+          }
         }
       }
       return out;

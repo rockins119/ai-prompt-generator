@@ -24,6 +24,11 @@ const CONFIG = {
   rememberLastChoice: true
 };
 
+/* 排版相关：选项超过 CAPSULE_LIMIT 个的字段自动改用下拉框，省一大片地方 */
+const CAPSULE_LIMIT = 8;
+/* 字段名超过这么多字（个别开关拿整段话当名字）就独占一行显示 */
+const LONG_LABEL = 22;
+
 /* ===================== 运行时状态 ===================== */
 
 const STATE = {
@@ -35,7 +40,6 @@ const STATE = {
   sections: null,       // 当前生效的字段结构
   fields: [],           // [{ id, sectionKey, key, field }]
   values: {},           // id -> 值
-  tagEls: {},           // id -> 值标签元素
   pendingCustom: {}     // id -> 自定义追加的选项 { value, label }
 };
 
@@ -74,21 +78,6 @@ function flatOptions(field) {
     });
   }
   return out;
-}
-
-/** 追加的自定义选项也要能参与「值 → 显示文字」的换算 */
-function allOptionValues(field, id) {
-  const values = flatOptions(field).map(o => o.value);
-  const extra = STATE.pendingCustom[id];
-  if (extra) values.push(extra.value);
-  return values;
-}
-
-function labelForValue(field, id, value) {
-  const extra = STATE.pendingCustom[id];
-  if (extra && extra.value === value) return extra.label;
-  const hit = flatOptions(field).find(o => o.value === value);
-  return hit ? hit.label : value;
 }
 
 /** 字符串里如果是完整 JSON 对象，就还原成对象（提示词里支持直接塞结构化片段） */
@@ -164,90 +153,76 @@ function initialValue(field) {
   return field.default === undefined ? '' : field.default;
 }
 
-function valueLabel(field, id, value) {
-  const type = field.type;
+/* ===================== 渲染：单个字段 ===================== */
 
-  if (type === 'switch' || type === 'boolean') return value ? '开' : '关';
-
-  if (type === 'multi-select') {
-    if (!Array.isArray(value) || !value.length) return '未选';
-    return value.map(v => {
-      if (typeof v === 'string' && resolveValue(v) !== v) return 'JSON 片段';
-      return labelForValue(field, id, v);
-    }).join(' · ');
-  }
-
-  if (type === 'select' || type === 'button-select') {
-    if (typeof value === 'string' && resolveValue(value) !== value) return 'JSON 片段';
-    return value === '' || value === undefined || value === null ? '未选' : labelForValue(field, id, value);
-  }
-
-  if (typeof value === 'string' && resolveValue(value) !== value) return 'JSON 片段';
-  return value === '' || value === undefined || value === null ? '未填' : String(value);
+function infoIcon(text) {
+  const icon = el('span', 'info', 'i');
+  icon.setAttribute('tabindex', '0');
+  icon.setAttribute('data-tip', text);
+  icon.setAttribute('title', '');
+  return icon;
 }
-
-function isEmptyValue(type, value) {
-  if (type === 'switch' || type === 'boolean') return !value;
-  if (Array.isArray(value)) return value.length === 0;
-  return value === '' || value === undefined || value === null;
-}
-
-/* ===================== 渲染：字段卡片 ===================== */
 
 function renderField(entry) {
-  const { id, key, field } = entry;
-  const card = el('div', 'card');
-  const header = el('div', 'card-header');
-  const titleGroup = el('div', 'card-title-group');
-
-  titleGroup.appendChild(el('span', 'card-label', field.label || key));
-  if (field.description) titleGroup.appendChild(el('p', 'card-description', field.description));
-
-  const tag = el('span', 'selected-value');
-  titleGroup.appendChild(tag);
-  STATE.tagEls[id] = tag;
-
-  header.appendChild(titleGroup);
-  card.appendChild(header);
-
+  const { id, field, key } = entry;
   const type = field.type;
+  const isSwitch = type === 'switch' || type === 'boolean';
+  const labelText = field.label || key;
 
-  if (type === 'switch' || type === 'boolean') {
-    const wrap = el('label', 'switch');
-    const input = el('input');
-    input.type = 'checkbox';
-    input.checked = !!STATE.values[id];
-    input.addEventListener('change', () => setValue(id, input.checked));
-    wrap.appendChild(input);
-    wrap.appendChild(el('span', 'slider'));
-    header.appendChild(wrap);
+  const row = el('div', 'field');
+  if (isSwitch) row.classList.add('field-switch');
+  if (labelText.length > LONG_LABEL) row.classList.add('field-wide');
+
+  const labelBox = el('div', 'field-label');
+  labelBox.appendChild(el('span', 'field-name', labelText));
+  if (field.description) labelBox.appendChild(infoIcon(field.description));
+  row.appendChild(labelBox);
+
+  const controlBox = el('div', 'field-control');
+
+  if (isSwitch) {
+    controlBox.appendChild(switchControl(entry));
+  } else if (type === 'text') {
+    controlBox.appendChild(textControl(entry));
+  } else if (type === 'multi-select') {
+    controlBox.appendChild(pillGroup(entry, true));
   } else {
-    const body = el('div');
-    if (type === 'text') {
-      body.appendChild(renderTextInput(entry));
-    } else if (type === 'select') {
-      body.appendChild(renderSelect(entry));
+    // select 与 button-select 统一处理：选项少用胶囊，选项多改成下拉框
+    const count = flatOptions(field).length;
+    if (type === 'select' || count > CAPSULE_LIMIT) {
+      controlBox.appendChild(selectControl(entry));
     } else {
-      body.appendChild(renderPillGroup(entry));
+      controlBox.appendChild(pillGroup(entry, false));
     }
-    body.appendChild(renderAdder(entry));
-    card.appendChild(body);
   }
 
-  refreshTag(id);
-  return card;
+  if (!isSwitch) controlBox.appendChild(adderControl(entry));
+  row.appendChild(controlBox);
+
+  return row;
 }
 
-function renderTextInput(entry) {
-  const { id } = entry;
+function switchControl(entry) {
+  const wrap = el('label', 'switch');
+  const input = el('input');
+  input.type = 'checkbox';
+  input.checked = !!STATE.values[entry.id];
+  input.addEventListener('change', () => setValue(entry.id, input.checked));
+  wrap.appendChild(input);
+  wrap.appendChild(el('span', 'slider'));
+  return wrap;
+}
+
+function textControl(entry) {
   const input = el('input');
   input.type = 'text';
-  input.value = STATE.values[id] === undefined ? '' : String(STATE.values[id]);
-  input.addEventListener('input', () => setValue(id, input.value));
+  const value = STATE.values[entry.id];
+  input.value = value === undefined || value === null ? '' : String(value);
+  input.addEventListener('input', () => setValue(entry.id, input.value));
   return input;
 }
 
-function renderSelect(entry) {
+function selectControl(entry) {
   const { id, field } = entry;
   const select = el('select');
   const current = STATE.values[id];
@@ -260,8 +235,7 @@ function renderSelect(entry) {
   };
 
   const raw = field.options;
-  if (raw && !Array.isArray(raw) && typeof raw === 'object') {
-    // 分组写法
+  if (raw && !Array.isArray(raw) && typeof raw === 'object' && field.group) {
     for (const groupName of Object.keys(raw)) {
       const og = el('optgroup');
       og.label = groupName;
@@ -278,14 +252,14 @@ function renderSelect(entry) {
   const ADD = el('option', null, '✎ 自定义…');
   ADD.value = '__ADD_NEW__';
   select.appendChild(ADD);
+  select.value = current;
 
   select.addEventListener('change', () => {
     if (select.value === '__ADD_NEW__') {
-      openAdder(entry.id);
-      // 还原成原来的选择，避免下拉框卡在「自定义」上
+      openAdder(id);
       select.value = STATE.values[id];
     } else {
-      closeAdder(entry.id);
+      closeAdder(id);
       setValue(id, select.value);
     }
   });
@@ -294,9 +268,8 @@ function renderSelect(entry) {
   return select;
 }
 
-function renderPillGroup(entry) {
+function pillGroup(entry, multi) {
   const { id, field } = entry;
-  const multi = field.type === 'multi-select';
   const wrap = el('div', 'pill-group');
 
   flatOptions(field).forEach(opt => {
@@ -341,8 +314,7 @@ function pillElement(entry, opt, multi) {
   return label;
 }
 
-function renderAdder(entry) {
-  const { id, field } = entry;
+function adderControl(entry) {
   const box = el('div', 'hidden-adder');
 
   const ta = el('textarea', 'custom-input');
@@ -389,18 +361,18 @@ function commitCustom(entry, ta) {
   if (!value) return;
 
   STATE.pendingCustom[id] = { value, label: value };
-  const multi = field.type === 'multi-select';
 
-  if (field.type === 'select' && entry.selectEl) {
+  if (entry.selectEl) {
     const option = el('option', null, value);
     option.value = value;
     entry.selectEl.insertBefore(option, entry.selectEl.lastElementChild);
     entry.selectEl.value = value;
     setValue(id, value);
   } else if (entry.pillGroupEl) {
+    const multi = field.type === 'multi-select';
     const node = pillElement(entry, { value, label: value }, multi);
-    const checked = node.querySelector('input');
-    if (checked) checked.checked = true;
+    const box = node.querySelector('input');
+    if (box) box.checked = true;
     entry.pillGroupEl.insertBefore(node, entry.pillGroupEl.lastElementChild);
 
     if (multi) {
@@ -414,7 +386,6 @@ function commitCustom(entry, ta) {
 
   ta.value = '';
   closeAdder(id);
-  refreshTag(id);
 }
 
 /* ===================== 值更新 ===================== */
@@ -425,17 +396,7 @@ function findEntry(id) {
 
 function setValue(id, value) {
   STATE.values[id] = value;
-  refreshTag(id);
   updatePreview();
-}
-
-function refreshTag(id) {
-  const entry = findEntry(id);
-  const tag = STATE.tagEls[id];
-  if (!entry || !tag) return;
-  const value = STATE.values[id];
-  tag.textContent = valueLabel(entry.field, id, value);
-  tag.classList.toggle('empty', isEmptyValue(entry.field.type, value));
 }
 
 /* ===================== 生成 JSON ===================== */
@@ -493,7 +454,6 @@ function buildForm(sections) {
 
   STATE.fields = [];
   STATE.values = {};
-  STATE.tagEls = {};
   STATE.pendingCustom = {};
   STATE.sections = sections || {};
 
@@ -507,13 +467,12 @@ function buildForm(sections) {
   let index = 0;
   for (const sectionKey of sectionKeys) {
     const section = STATE.sections[sectionKey] || {};
-    const block = el('div');
+    const block = el('div', 'section-block');
 
     const title = el('div', 'section-title');
     title.textContent = (section.icon ? section.icon + ' ' : '') + (section.title || sectionKey);
     block.appendChild(title);
 
-    const grid = el('div', 'grid-container');
     const fields = section.fields || {};
     for (const fieldKey of Object.keys(fields)) {
       const field = fields[fieldKey];
@@ -521,10 +480,9 @@ function buildForm(sections) {
       const entry = { id, sectionKey, key: fieldKey, field };
       STATE.fields.push(entry);
       STATE.values[id] = initialValue(field);
-      grid.appendChild(renderField(entry));
+      block.appendChild(renderField(entry));
     }
 
-    block.appendChild(grid);
     container.appendChild(block);
   }
 
@@ -549,24 +507,27 @@ function renderGroupNav() {
   });
 }
 
-function renderPresetNav() {
-  const bar = document.getElementById('presetNavBar');
-  bar.innerHTML = '';
-  const presets = (STATE.group && STATE.group.presets) || [];
+function renderPresetSelect() {
+  const select = document.getElementById('presetSelect');
+  if (!select) return;
+  select.innerHTML = '';
 
+  const presets = (STATE.group && STATE.group.presets) || [];
   if (!presets.length) {
-    bar.appendChild(el('span', 'nav-empty', '该分组暂无预设，使用上方默认配置'));
+    const opt = el('option', null, '该分组暂无预设，使用默认配置');
+    opt.value = '';
+    select.appendChild(opt);
+    select.disabled = true;
     return;
   }
 
-  presets.forEach(preset => {
-    const btn = el('button', 'preset-pill');
-    btn.type = 'button';
-    btn.textContent = preset.name || preset.key;
-    if (preset.key === STATE.presetKey) btn.classList.add('active');
-    btn.addEventListener('click', () => selectPreset(preset.key));
-    bar.appendChild(btn);
+  select.disabled = false;
+  presets.forEach((preset, i) => {
+    const opt = el('option', null, (i + 1) + '. ' + (preset.name || preset.key));
+    opt.value = preset.key;
+    select.appendChild(opt);
   });
+  select.value = STATE.presetKey;
 }
 
 function activePreset() {
@@ -663,7 +624,7 @@ async function selectGroup(groupKey) {
 
   const container = document.getElementById('form-container');
   container.innerHTML = '';
-  container.appendChild(placeholder('正在加载「' + groupKey + '」配置...'));
+  container.appendChild(placeholder('正在加载配置...'));
 
   try {
     const group = await loadGroup(groupKey);
@@ -671,13 +632,16 @@ async function selectGroup(groupKey) {
     STATE.group = group;
 
     const presets = group.presets || [];
-    const sameGroup = STATE.presetKey && presets.some(p => p.key === STATE.presetKey);
-    STATE.presetKey = sameGroup ? STATE.presetKey : (presets.length ? presets[0].key : '');
+    const keep = STATE.presetKey && presets.some(p => p.key === STATE.presetKey);
+    STATE.presetKey = keep ? STATE.presetKey : (presets.length ? presets[0].key : '');
 
     renderGroupNav();
-    renderPresetNav();
+    renderPresetSelect();
     buildForm(activeSections());
     saveChoice();
+
+    const left = document.getElementById('left-panel');
+    if (left) left.scrollTop = 0;
   } catch (error) {
     container.innerHTML = '';
     container.appendChild(placeholder('加载失败：' + error.message, true));
@@ -690,11 +654,12 @@ function selectPreset(presetKey) {
   if (!preset) return;
 
   STATE.presetKey = presetKey;
-  renderPresetNav();
+  renderPresetSelect();
   buildForm(activeSections());
   saveChoice();
-  const bar = document.getElementById('presetNavBar');
-  if (bar && typeof bar.scrollIntoView === 'function') bar.scrollIntoView({ block: 'nearest' });
+
+  const left = document.getElementById('left-panel');
+  if (left) left.scrollTop = 0;
 }
 
 function resetPreset() {
@@ -749,6 +714,11 @@ function bindActions() {
       else if (action === 'reset') resetPreset();
     });
   });
+
+  const presetSelect = document.getElementById('presetSelect');
+  if (presetSelect) {
+    presetSelect.addEventListener('change', () => selectPreset(presetSelect.value));
+  }
 }
 
 /** 窄屏下把 JSON 面板收成底部一条，点「展开」查看完整内容 */
