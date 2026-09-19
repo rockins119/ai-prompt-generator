@@ -11,3 +11,10 @@ _site_dump/
 
 # 临时脚本
 _*.py
+
+# 编辑器 / 工具生成的目录
+.reasonix/
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
