@@ -89,7 +89,25 @@ for (const sk of Object.keys(schema)) {
   const rowCount = rows().length;
   console.log('    (字段行数 ' + rowCount + ')');
   check('字段数量与源数据一致', rowCount === allFields.length, { 页面: rowCount, 源数据: allFields.length });
-  check('分区标题渲染', doc.querySelectorAll('#form-container .section-title').length > 0);
+  const layerBlocks = doc.querySelectorAll('#form-container .layer-block');
+  check('每层渲染成一张卡片', layerBlocks.length > 0, layerBlocks.length);
+  const firstLayerNo = doc.querySelector('#form-container .layer-no');
+  check('层卡片带 LAYER 编号', firstLayerNo && /^LAYER \d{2}$/.test(firstLayerNo.textContent),
+    firstLayerNo && firstLayerNo.textContent);
+  check('层标题数量 = 层数', doc.querySelectorAll('#form-container .layer-title').length === layerBlocks.length);
+  check('层说明由标题括号提取', doc.querySelectorAll('#form-container .layer-desc').length > 0,
+    doc.querySelectorAll('#form-container .layer-desc').length);
+
+  const layerTabs = doc.querySelectorAll('#layerNav .layer-tab');
+  check('层导航 tab 数量 = 层数', layerTabs.length === layerBlocks.length,
+    { tabs: layerTabs.length, layers: layerBlocks.length });
+  check('第一个层导航 tab 高亮', layerTabs[0] && layerTabs[0].classList.contains('active'));
+  check('层导航名字去掉了括号说明', layerTabs[0] && !/[（(]/.test(layerTabs[0].textContent),
+    layerTabs[0] && layerTabs[0].textContent);
+  check('层导航名字与层标题一致',
+    layerTabs[0] && doc.querySelector('#form-container .layer-title').textContent.includes(layerTabs[0].textContent),
+    { tab: layerTabs[0] && layerTabs[0].textContent,
+      title: doc.querySelector('#form-container .layer-title').textContent });
   check('开关类字段标记正确', doc.querySelectorAll('#form-container .field-switch').length > 0);
 
   // 每个「选项型字段」都必须有胶囊组；选型总数要和源数据对得上
@@ -144,6 +162,17 @@ for (const sk of Object.keys(schema)) {
     { jsonFieldCount, rowCount, offSwitches });
   check('预览元信息显示', /项/.test(doc.getElementById('previewMeta').textContent));
 
+  const textPreview = doc.getElementById('text-preview').textContent;
+  console.log('    (提示词文本 ' + textPreview.length + ' 字符)');
+  check('提示词文本非空', textPreview.length > 100, textPreview.length);
+  check('文本按层分段（带【层名】）', /【.+?】/.test(textPreview), textPreview.slice(0, 50));
+  check('文本层数与 JSON 分区数一致',
+    (textPreview.match(/【/g) || []).length === Object.keys(parsed).length,
+    { 文本层数: (textPreview.match(/【/g) || []).length, JSON分区: Object.keys(parsed).length });
+  const sampleSection = Object.values(parsed).find(o => Object.keys(o).length) || {};
+  const sampleVal = String(Object.values(sampleSection)[0] || '').slice(0, 12);
+  check('文本包含选中的值', sampleVal && textPreview.includes(sampleVal), { 找: sampleVal });
+
   console.log('\n=== 6. 交互：点选胶囊 ===');
   const firstRadio = doc.querySelector('#form-container .pill-group input[type=radio]:not(:checked)');
   if (firstRadio) {
@@ -151,6 +180,8 @@ for (const sk of Object.keys(schema)) {
     firstRadio.dispatchEvent(new window.Event('change', { bubbles: true }));
     await sleep(120);
     check('点选后 JSON 内容变化', JSON.stringify(json()) !== JSON.stringify(parsed));
+    const textAfterClick = doc.getElementById('text-preview').textContent;
+    check('点选后提示词文本同步更新', textAfterClick !== textPreview);
     parsed = json();
   } else {
     check('找到可点击的单选胶囊', false);
@@ -220,7 +251,13 @@ for (const sk of Object.keys(schema)) {
     check('自定义胶囊已加入该字段', !!doc.querySelector('#form-container .pill-label input[value="我的自定义风格值"]'));
   }
 
-  console.log('\n=== 13. 重置 ===');
+  console.log('\n=== 13. 复制按钮 ===');
+  check('有复制文本的按钮', doc.querySelectorAll('[data-action=copy-text]').length > 0,
+    doc.querySelectorAll('[data-action=copy-text]').length);
+  check('有复制 JSON 的按钮', doc.querySelectorAll('[data-action=copy]').length > 0);
+  check('有复制并打开的按钮', doc.querySelectorAll('[data-action=copy-open]').length > 0);
+
+  console.log('\n=== 14. 重置 ===');
   doc.querySelector('[data-action=reset]').dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
   await sleep(300);
   const afterReset = json();

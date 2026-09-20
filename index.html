@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>AI 提示词生成器</title>
-  <meta name="description" content="可视化选择参数，一键生成结构化 JSON 提示词">
+  <meta name="description" content="可视化选择参数，一键生成结构化提示词">
   <link rel="icon" type="image/svg+xml" href="favicon.svg">
   <link rel="stylesheet" href="assets/style.css">
 </head>
@@ -22,6 +22,7 @@
       <div class="nav-block">
         <div class="group-nav-bar" id="groupNavBar"></div>
         <div class="preset-bar" id="presetNavBar"></div>
+        <div class="layer-nav" id="layerNav"></div>
       </div>
       <div id="form-container">
         <div class="placeholder">正在加载配置...</div>
@@ -29,20 +30,33 @@
     </section>
 
     <aside id="right-panel">
-      <div class="preview-header">
-        <span class="preview-title">JSON 提示词</span>
+      <div class="panel-bar">
+        <span class="panel-bar-title">生成结果</span>
         <span class="preview-meta" id="previewMeta"></span>
-        <button type="button" class="copy-btn panel-copy" data-action="copy">复制</button>
+        <button type="button" class="mini-btn panel-copy" data-action="copy">复制 JSON</button>
         <button type="button" class="panel-toggle" id="panelToggle" aria-expanded="true">收起</button>
       </div>
 
-      <div id="preview-content">
-        <pre id="json-preview">{}</pre>
+      <div class="output-block">
+        <div class="preview-header">
+          <span class="preview-title">提示词文本</span>
+          <button type="button" class="mini-btn" data-action="copy-text">复制</button>
+        </div>
+        <div class="output-body"><pre id="text-preview"></pre></div>
+      </div>
+
+      <div class="output-block">
+        <div class="preview-header">
+          <span class="preview-title">结构 JSON</span>
+          <button type="button" class="mini-btn" data-action="copy">复制</button>
+        </div>
+        <div class="output-body"><pre id="json-preview">{}</pre></div>
       </div>
 
       <div class="preview-actions">
         <button type="button" class="copy-btn primary" data-action="copy">复制 JSON</button>
         <button type="button" class="copy-btn" data-action="copy-open" id="btnCopyOpen">复制并打开 AI</button>
+        <button type="button" class="copy-btn" data-action="copy-text">复制文本</button>
         <button type="button" class="copy-btn" data-action="download">下载 JSON</button>
         <button type="button" class="copy-btn ghost" data-action="reset">重置当前预设</button>
       </div>

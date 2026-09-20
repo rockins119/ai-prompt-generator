@@ -56,7 +56,7 @@ function check(name, cond, extra) {
     const controls = rows.map(r => r.querySelector('.field-control'));
     const pills = Array.from(document.querySelectorAll('#form-container .pill-text'));
     const nav = document.querySelector('.nav-block').getBoundingClientRect();
-    const left = document.querySelector('#left-panel');
+    const left = document.querySelector('#form-container');
 
     // 标签列：只统计「普通行」（开关行标签占满、独占行的标签本来就满宽）
     const isNormal = r => !r.classList.contains('field-wide') && !r.classList.contains('field-switch');
@@ -76,6 +76,11 @@ function check(name, cond, extra) {
       presetBarH: Math.round(document.getElementById('presetNavBar').getBoundingClientRect().height),
       presetPillCount: document.querySelectorAll('#presetNavBar .preset-pill').length,
       selectCount: document.querySelectorAll('#form-container select').length,
+      layerBlockCount: document.querySelectorAll('#form-container .layer-block').length,
+      layerTabCount: document.querySelectorAll('#layerNav .layer-tab').length,
+      outputBlockHeights: Array.from(document.querySelectorAll('#right-panel .output-block'))
+        .map(b => Math.round(b.getBoundingClientRect().height)),
+      textPreviewLen: (document.getElementById('text-preview') || { textContent: '' }).textContent.length,
       rowCount: rows.length,
       labelWidths: { min: Math.min(...labelWidths), max: Math.max(...labelWidths) },
       labelHeights: { min: Math.min(...normalHeights), max: Math.max(...normalHeights) },
@@ -93,6 +98,8 @@ function check(name, cond, extra) {
       screens: +(left.scrollHeight / left.clientHeight).toFixed(1),
       pillCount: pills.length,
       perScreen: Math.round(left.clientHeight / (heights.reduce((a, b) => a + b, 0) / heights.length)),
+      visibleH: Math.round(left.clientHeight),
+      navShare: Math.round(100 * nav.height / (left.clientHeight + nav.height)),
       bodyScrollW: document.documentElement.scrollWidth,
       bodyClientW: document.documentElement.clientWidth,
       tooltipCount: document.querySelectorAll('#form-container .info').length
@@ -105,32 +112,42 @@ function check(name, cond, extra) {
   console.log('    标签列高          : ' + m.labelHeights.min + ' ~ ' + m.labelHeights.max + 'px（普通行最大 ' + m.normalLabelMax + 'px）');
   console.log('    控件起点 x        : ' + m.controlLeft.min + ' ~ ' + m.controlLeft.max);
   console.log('    行高 min/avg/max  : ' + m.rowHeights.min + ' / ' + m.rowHeights.avg + ' / ' + m.rowHeights.max + 'px');
-  console.log('    内容总高          : ' + m.leftTotalH + 'px → 需滚动 ' + m.screens + ' 屏，一屏约 ' + m.perScreen + ' 个字段');
+  console.log('    内容总高          : ' + m.leftTotalH + 'px → 需滚动 ' + m.screens + ' 屏');
+  console.log('    可视区            : ' + m.visibleH + 'px（导航占掉 ' + m.navShare + '%），一屏约 ' + m.perScreen + ' 个字段');
   console.log('    胶囊数            : ' + m.pillCount);
+  console.log('    层卡片 / 层导航    : ' + m.layerBlockCount + ' 张 / ' + m.layerTabCount + ' 个 tab');
+  console.log('    结果区两块高度     : ' + m.outputBlockHeights.join(' / ') + 'px（文本 ' + m.textPreviewLen + ' 字符）');
   if (m.tooltip) console.log('    提示气泡          : ' + JSON.stringify(m.tooltip));
   check('页面无横向溢出', m.bodyScrollW <= m.bodyClientW + 1, { w: m.bodyScrollW, c: m.bodyClientW });
   check('标签列宽一致（控件起点对齐）', m.controlLeft.max - m.controlLeft.min <= 2,
     { min: m.controlLeft.min, max: m.controlLeft.max });
   check('普通字段的标签不折行', m.normalLabelMax <= 26, { max: m.normalLabelMax, 检查了: m.normalLabelCount + ' 个' });
-  check('导航区没有失控（< 320px）', m.navH < 320, m.navH);
-  check('一屏能看到 10 个以上字段', m.perScreen >= 10, m.perScreen);
-  check('内容总高控制在 2600px 以内', m.leftTotalH < 2600, m.leftTotalH);
-  check('滚动距离不超过 3 屏', m.screens <= 3, m.screens);
+  check('导航区没有失控（< 360px）', m.navH < 360, m.navH);
+  check('未滚动时一屏能看到 8 个以上字段', m.perScreen >= 8, m.perScreen);
+  check('内容总高控制在 3100px 以内', m.leftTotalH < 3100, m.leftTotalH);
+  check('未收起时滚动距离不超过 5 屏', m.screens <= 5, m.screens);
   check('字段全部用胶囊点选（页面无下拉框）', m.selectCount === 0, m.selectCount);
   check('预设是胶囊（28 个）', m.presetPillCount === 28, m.presetPillCount);
+  check('每层都渲染成卡片', m.layerBlockCount > 0, m.layerBlockCount);
+  check('层导航 tab 与层数一致', m.layerTabCount === m.layerBlockCount,
+    { tabs: m.layerTabCount, layers: m.layerBlockCount });
+  check('结果区拆成了两块（文本 + JSON）', m.outputBlockHeights.length === 2, m.outputBlockHeights);
+  check('两块高度大致均分', Math.abs(m.outputBlockHeights[0] - m.outputBlockHeights[1]) < 60,
+    m.outputBlockHeights);
+  check('提示词文本有内容', m.textPreviewLen > 100, m.textPreviewLen);
   check('选项少的字段最多占两行胶囊（≤ 80px）',
     m.smallRowHeights.max <= 80,
     m.smallRowHeights);
 
   console.log('\n=== 提示气泡（说明文字）===');
   const tipBefore = await page.evaluate(() => ({
-    leftScrollW: document.querySelector('#left-panel').scrollWidth,
+    leftScrollW: document.querySelector('#form-container').scrollWidth,
     docScrollW: document.documentElement.scrollWidth
   }));
   await page.hover('#form-container .info');
   await new Promise(r => setTimeout(r, 350));
   const tipAfter = await page.evaluate(() => ({
-    leftScrollW: document.querySelector('#left-panel').scrollWidth,
+    leftScrollW: document.querySelector('#form-container').scrollWidth,
     docScrollW: document.documentElement.scrollWidth,
     display: getComputedStyle(document.querySelector('#form-container .info'), '::after').display
   }));
@@ -144,6 +161,29 @@ function check(name, cond, extra) {
   check('气泡显示后页面仍无横向溢出', tipAfter.docScrollW <= tipBefore.docScrollW + 1,
     { before: tipBefore.docScrollW, after: tipAfter.docScrollW });
 
+  console.log('\n=== 往下滚之后（导航自动收起）===');
+  await page.evaluate(() => { document.querySelector('#form-container').scrollTop = 400; });
+  await new Promise(r => setTimeout(r, 500));
+  const sc = await page.evaluate(() => {
+    const nav = document.querySelector('.nav-block').getBoundingClientRect();
+    const left = document.querySelector('#form-container');
+    const rows = Array.from(document.querySelectorAll('#form-container .field'));
+    const avg = rows.reduce((a, r) => a + r.getBoundingClientRect().height, 0) / rows.length;
+    return {
+      compact: document.querySelector('.nav-block').classList.contains('compact'),
+      navH: Math.round(nav.height),
+      visibleH: Math.round(left.clientHeight),
+      perScreen: Math.round(left.clientHeight / avg)
+    };
+  });
+  console.log('    ' + JSON.stringify(sc));
+  check('滚动后导航自动收起', sc.compact, sc);
+  check('收起后导航只剩一层（< 60px）', sc.navH < 60, sc.navH);
+  check('收起后可视区明显变大', sc.visibleH > m.visibleH + 200, { 收起前: m.visibleH, 收起后: sc.visibleH });
+  check('收起后一屏能看到 12 个以上字段', sc.perScreen >= 12, sc.perScreen);
+  check('收起后滚动距离缩到 3.5 屏以内',
+    (m.leftTotalH / sc.visibleH) <= 3.5, (m.leftTotalH / sc.visibleH).toFixed(1));
+
   console.log('\n=== 对照旧版（改版前实测）===');
   console.log('    导航区      277px → ' + m.navH + 'px');
   console.log('    一屏字段      8 个 → ' + m.perScreen + ' 个');
@@ -152,14 +192,14 @@ function check(name, cond, extra) {
   console.log('    行高离散  标准差 128px → 极差 ' + (m.rowHeights.max - m.rowHeights.min) + 'px');
 
   console.log('\n=== 交互后状态 ===');
-  const beforePresetH = await page.evaluate(() => document.querySelector('#left-panel').scrollHeight);
+  const beforePresetH = await page.evaluate(() => document.querySelector('#form-container').scrollHeight);
   await page.evaluate(() => document.querySelectorAll('#presetNavBar .preset-pill')[2]
     .dispatchEvent(new MouseEvent('click', { bubbles: true })));
   await new Promise(r => setTimeout(r, 700));
   const after = await page.evaluate(() => ({
     rows: document.querySelectorAll('#form-container .field').length,
-    leftTotalH: document.querySelector('#left-panel').scrollHeight,
-    scrollTop: document.querySelector('#left-panel').scrollTop,
+    leftTotalH: document.querySelector('#form-container').scrollHeight,
+    scrollTop: document.querySelector('#form-container').scrollTop,
     activeIdx: Array.from(document.querySelectorAll('#presetNavBar .preset-pill')).findIndex(p => p.classList.contains('active')),
     url: location.search
   }));

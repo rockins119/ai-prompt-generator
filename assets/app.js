@@ -37,6 +37,7 @@ const STATE = {
   group: null,          // 当前分组数据
   sections: null,       // 当前生效的字段结构
   fields: [],           // [{ id, sectionKey, key, field }]
+  layers: [],           // 当前渲染出的「层」，供层导航使用
   values: {},           // id -> 值
   pendingCustom: {}     // id -> 自定义追加的选项 { value, label }
 };
@@ -95,6 +96,18 @@ function splitBoolKey(key) {
   const i = Math.max(key.indexOf(':'), key.indexOf('：'));
   if (i < 0) return null;
   return { jsonKey: key.slice(0, i).trim(), jsonVal: key.slice(i + 1).trim() };
+}
+
+/**
+ * 分区标题拆成「层名 + 层说明」。
+ * 数据里的标题常写成 "场景类型（小白保持默认参数，对应调整自己理解的参数即可）"，
+ * 括号里的那截正好当层的说明文字，没有括号就只当标题。
+ */
+function parseSectionTitle(title, fallback) {
+  const raw = String(title || fallback || '').trim();
+  const m = raw.match(/^([\s\S]*?)[（(]([\s\S]*)[）)]$/);
+  if (m && m[1].trim()) return { name: m[1].trim(), desc: m[2].trim() };
+  return { name: raw, desc: '' };
 }
 
 function showToast(message) {
@@ -378,6 +391,9 @@ function updatePreview() {
     const pre = document.getElementById('json-preview');
     if (pre) pre.textContent = text;
 
+    const textPre = document.getElementById('text-preview');
+    if (textPre) textPre.textContent = buildPlainText();
+
     const meta = document.getElementById('previewMeta');
     if (meta) meta.textContent = STATE.fields.length + ' 项 · ' + text.length + ' 字符';
 
@@ -404,13 +420,25 @@ function buildForm(sections) {
   }
 
   let index = 0;
+  let layerNo = 0;
+  const layers = [];
+
   for (const sectionKey of sectionKeys) {
     const section = STATE.sections[sectionKey] || {};
-    const block = el('div', 'section-block');
+    const parsed = parseSectionTitle(section.title, sectionKey);
+    layerNo += 1;
 
-    const title = el('div', 'section-title');
-    title.textContent = (section.icon ? section.icon + ' ' : '') + (section.title || sectionKey);
-    block.appendChild(title);
+    const block = el('div', 'layer-block');
+    const head = el('div', 'layer-head');
+    head.appendChild(el('span', 'layer-no', 'LAYER ' + (layerNo < 10 ? '0' + layerNo : String(layerNo))));
+
+    const heading = el('h2', 'layer-title');
+    if (section.icon) heading.appendChild(el('span', 'layer-icon', section.icon));
+    heading.appendChild(document.createTextNode((section.icon ? ' ' : '') + parsed.name));
+    head.appendChild(heading);
+
+    if (parsed.desc) head.appendChild(el('p', 'layer-desc', parsed.desc));
+    block.appendChild(head);
 
     const fields = section.fields || {};
     for (const fieldKey of Object.keys(fields)) {
@@ -423,8 +451,12 @@ function buildForm(sections) {
     }
 
     container.appendChild(block);
+    layers.push({ key: sectionKey, name: parsed.name, el: block });
   }
 
+  STATE.layers = layers;
+  renderLayerNav(layers);
+  resetNavCollapse();
   updatePreview();
 }
 
@@ -466,6 +498,139 @@ function renderPresetBar() {
     btn.addEventListener('click', () => selectPreset(preset.key));
     bar.appendChild(btn);
   });
+}
+
+/* ===================== 导航收起 ===================== */
+
+/** 表单区才是真正的滚动容器（导航区固定在它上面） */
+function scrollArea() {
+  return document.getElementById('form-container') || document.getElementById('left-panel');
+}
+
+/** 往下滚时收起分组和预设（这俩很占高度），滚回顶部自动展开 */
+function setupNavCollapse() {
+  const nav = document.querySelector('.nav-block');
+  if (!nav) return;
+  const panel = scrollArea();
+
+  let ticking = false;
+  function apply(y) {
+    nav.classList.toggle('compact', y > 140);
+  }
+  function onScroll(y) {
+    if (ticking) return;
+    ticking = true;
+    raf(() => { ticking = false; apply(y); });
+  }
+
+  if (panel) panel.addEventListener('scroll', () => onScroll(panel.scrollTop), { passive: true });
+  // 窄屏时滚动发生在 body 上
+  window.addEventListener('scroll', () => onScroll(window.scrollY), { passive: true });
+}
+
+function resetNavCollapse() {
+  const nav = document.querySelector('.nav-block');
+  if (nav) nav.classList.remove('compact');
+}
+
+/* ===================== 层导航 ===================== */
+
+function renderLayerNav(layers) {
+  const nav = document.getElementById('layerNav');
+  if (!nav) return;
+  nav.innerHTML = '';
+
+  (layers || []).forEach((layer, i) => {
+    const btn = el('button', 'layer-tab');
+    btn.type = 'button';
+    btn.textContent = layer.name;
+    btn.title = layer.name;
+    btn.dataset.layer = layer.key;
+    btn.addEventListener('click', () => {
+      if (layer.el && typeof layer.el.scrollIntoView === 'function') {
+        layer.el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+      setActiveLayerTab(layer.key);
+    });
+    if (i === 0) btn.classList.add('active');
+    nav.appendChild(btn);
+  });
+}
+
+function setActiveLayerTab(key) {
+  document.querySelectorAll('#layerNav .layer-tab').forEach(tab => {
+    tab.classList.toggle('active', tab.dataset.layer === key);
+  });
+}
+
+/** 滚动时高亮当前所在的层 */
+function setupLayerSpy() {
+  const panel = scrollArea();
+  if (!panel) return;
+
+  let ticking = false;
+  panel.addEventListener('scroll', () => {
+    if (ticking) return;
+    ticking = true;
+    raf(() => {
+      ticking = false;
+      const layers = STATE.layers || [];
+      if (!layers.length) return;
+      const top = panel.getBoundingClientRect().top;
+      let current = layers[0].key;
+      for (const layer of layers) {
+        if (layer.el.getBoundingClientRect().top - top <= 10) current = layer.key;
+      }
+      setActiveLayerTab(current);
+    });
+  });
+}
+
+/* ===================== 提示词文本 ===================== */
+
+/** 把所有选中的值拼成一段可直接粘给 AI 的提示词文本 */
+function buildPlainText() {
+  const schema = STATE.sections || {};
+  const blocks = [];
+
+  for (const sectionKey of Object.keys(schema)) {
+    const section = schema[sectionKey] || {};
+    const lines = [];
+
+    for (const entry of STATE.fields) {
+      if (entry.sectionKey !== sectionKey) continue;
+      const value = STATE.values[entry.id];
+      const type = entry.field.type;
+
+      if (type === 'switch' || type === 'boolean') {
+        if (!value) continue;
+        const pair = splitBoolKey(entry.key);
+        lines.push(pair ? pair.jsonVal : (entry.field.label || entry.key));
+      } else if (Array.isArray(value)) {
+        if (!value.length) continue;
+        lines.push(value.join('、'));
+      } else if (value !== '' && value !== undefined && value !== null) {
+        lines.push(String(value));
+      }
+    }
+
+    if (lines.length) {
+      const parsed = parseSectionTitle(section.title, sectionKey);
+      blocks.push('【' + parsed.name + '】\n' + lines.join('\n'));
+    }
+  }
+
+  return blocks.join('\n\n');
+}
+
+function currentText() {
+  const pre = document.getElementById('text-preview');
+  return pre ? pre.textContent : '';
+}
+
+async function actionCopyText() {
+  const ok = await copyToClipboard(currentText());
+  showToast(ok ? '✅ 已复制提示词文本' : '复制失败，请手动选择复制');
 }
 
 function activePreset() {
@@ -578,8 +743,8 @@ async function selectGroup(groupKey) {
     buildForm(activeSections());
     saveChoice();
 
-    const left = document.getElementById('left-panel');
-    if (left) left.scrollTop = 0;
+    const area = scrollArea();
+    if (area) area.scrollTop = 0;
   } catch (error) {
     container.innerHTML = '';
     container.appendChild(placeholder('加载失败：' + error.message, true));
@@ -596,8 +761,8 @@ function selectPreset(presetKey) {
   buildForm(activeSections());
   saveChoice();
 
-  const left = document.getElementById('left-panel');
-  if (left) left.scrollTop = 0;
+  const area = scrollArea();
+  if (area) area.scrollTop = 0;
 }
 
 function resetPreset() {
@@ -648,6 +813,7 @@ function bindActions() {
       const action = btn.dataset.action;
       if (action === 'copy') actionCopy();
       else if (action === 'copy-open') actionCopyAndOpen();
+      else if (action === 'copy-text') actionCopyText();
       else if (action === 'download') actionDownload();
       else if (action === 'reset') resetPreset();
     });
@@ -696,6 +862,8 @@ function setupResponsivePanel() {
 async function boot() {
   bindActions();
   setupResponsivePanel();
+  setupLayerSpy();
+  setupNavCollapse();
   try {
     await loadProject();
 
