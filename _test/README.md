@@ -24,6 +24,7 @@ cd _test
 node test.js      # 页面渲染与交互：分组/预设切换、选值、JSON 输出、自定义值、重置
 node layout.js    # 桌面 1600×1000 与手机 390×844 的布局、溢出、折叠面板
 node compare.js   # 把生成的 JSON 和原站逐字节对比（需要原站还能访问）
+node shot.js      # 生成界面截图 shot-desktop.png / shot-mobile.png
 ```
 
 每个脚本最后会打印 `全部通过 ✅` 或失败项。

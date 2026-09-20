@@ -7,7 +7,8 @@
   "scripts": {
     "test": "node test.js",
     "layout": "node layout.js",
-    "compare": "node compare.js"
+    "compare": "node compare.js",
+    "shot": "node shot.js"
   },
   "devDependencies": {
     "jsdom": "^30.1.0",

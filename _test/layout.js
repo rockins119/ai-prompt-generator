@@ -19,7 +19,7 @@ async function ensureServer() {
 
 /* 收尾兜底：任何截图/关闭卡住都不影响测试结论 */
 function guardExit(code) {
-  setTimeout(() => process.exit(code), 8000).unref();
+  setTimeout(() => process.exit(code), 40000).unref();
 }
 
 function check(name, cond, extra) {
@@ -295,13 +295,7 @@ function check(name, cond, extra) {
   console.log('\n=== 结果 ===');
   console.log(bad === 0 ? '布局检查全部通过 ✅' : bad + ' 项失败 ❌');
   guardExit(bad === 0 ? 0 : 1);
-  try {
-    await page.screenshot({ path: 'shot-desktop.png', timeout: 15000 });
-    await page2.screenshot({ path: 'shot-mobile.png', timeout: 15000 });
-    console.log('已保存截图：_test/shot-desktop.png、_test/shot-mobile.png');
-  } catch (e) {
-    console.log('（截图失败，不影响结论：' + e.message.split('\n')[0] + '）');
-  }
+  console.log('（想看图跑 npm run shot）');
   await browser.close().catch(() => {});
   process.exit(bad === 0 ? 0 : 1);
 })().catch(e => { console.error('异常: ' + e.message); process.exit(2); });
